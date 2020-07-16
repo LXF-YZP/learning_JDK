@@ -1,1 +1,28 @@
+# IntelliJ project files
+.idea/
 .idea
+*.idea
+*/workspace.xml
+*/misc.xml
+*.iml
+out
+gen
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
