@@ -23,3 +23,5 @@ test stash 8
 test stash 9
 
 test stash 10
+
+test stash 12
