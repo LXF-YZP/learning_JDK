@@ -2,3 +2,5 @@
 jdk源码学习
 
 test reset 
+
+test stash 1
