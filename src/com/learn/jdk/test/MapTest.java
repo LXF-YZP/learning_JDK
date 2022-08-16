@@ -12,11 +12,21 @@ public class MapTest {
 
     public static void main(String[] args) {
 
-        Map<String, String> map = new HashMap<>();
-        map.put("qqq", "qqq");
-
-        for (Map.Entry<String, String> entry : map.entrySet()) {
-            System.out.println(entry.getKey());
+//        Map<String, String> map = new HashMap<>();
+//        map.put("qqq", "qqq");
+//
+//        for (Map.Entry<String, String> entry : map.entrySet()) {
+//            System.out.println(entry.getKey());
+//        }
+        int retries = -1;
+        for (;;){
+            if (retries++ == 2) {
+//                System.out.println(retries);
+                break;
+            }
+            System.out.println(retries);
         }
+
+
     }
 }

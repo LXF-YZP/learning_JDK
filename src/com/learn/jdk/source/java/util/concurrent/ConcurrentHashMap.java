@@ -594,6 +594,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     static final int MOVED     = -1; // hash for forwarding nodes
     static final int TREEBIN   = -2; // hash for roots of trees
     static final int RESERVED  = -3; // hash for transient reservations
+    //二进制表示 01111111 11111111 11111111 11111111
     static final int HASH_BITS = 0x7fffffff; // usable bits of normal node hash
 
     /** Number of CPUS, to place bounds on some sizings */
@@ -682,6 +683,9 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * never be used in index calculations because of table bounds.
      */
     static final int spread(int h) {
+        //h=key.hashCode(),下面的表达式其实是(h = key.hashCode()) ^ (h >>> 16)
+        //HASH_BITS是0x7fffffff，该步是为了消除最高位上的负符号 hash的负在ConcurrentHashMap中有特殊意义表示在扩容或者是树节点
+        //https://blog.csdn.net/chanllenge/article/details/85673259
         return (h ^ (h >>> 16)) & HASH_BITS;
     }
 
@@ -750,16 +754,24 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * writes to be conservative.
      */
 
+    /*
+    利用 CAS 实现了了以下三个原子方法来访问桶的第一个元素
+    桶的第一个元素有特殊的意义，在 ConcurrentHashMap 中通常被用作桶的锁
+    * */
     @SuppressWarnings("unchecked")
+    // 获取桶的某个位置，任何情况下可以使用
     static final <K,V> Node<K,V> tabAt(Node<K,V>[] tab, int i) {
+        //(long)i << ASHIFT) + ABASE得到table[i]的内存偏移地址
         return (Node<K,V>)U.getObjectVolatile(tab, ((long)i << ASHIFT) + ABASE);
     }
 
+    // 插入桶的第一个键值对，可以在并发环境下，任何情况下可以使用
     static final <K,V> boolean casTabAt(Node<K,V>[] tab, int i,
                                         Node<K,V> c, Node<K,V> v) {
         return U.compareAndSwapObject(tab, ((long)i << ASHIFT) + ABASE, c, v);
     }
 
+    // 把键值对插入到桶中，只在有锁的的区域使用
     static final <K,V> void setTabAt(Node<K,V>[] tab, int i, Node<K,V> v) {
         U.putObjectVolatile(tab, ((long)i << ASHIFT) + ABASE, v);
     }
@@ -792,6 +804,12 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * creation, or 0 for default. After initialization, holds the
      * next element count value upon which to resize the table.
      */
+    /*
+    默认为0，用来控制table的初始化和扩容操作，不同值的代表状态如下：
+    -1：table[i]正在初始化
+    -N：表示有N-1个线程正在进行扩容操作
+    非负数情况：（1）如果table[i]未初始化，则表示table需要初始化的大小（2）如果初始化完成，则表示table[i]扩容的阀值，默认是table[]容量的0.75倍
+    */
     private transient volatile int sizeCtl;
 
     /**
@@ -821,26 +839,10 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * Creates a new, empty map with the default initial table size (16).
      */
     public ConcurrentHashMap() {
+        //sizeCtl：使用无参构造器时为0
     }
 
-    /**
-     * Creates a new, empty map with an initial table size
-     * accommodating the specified number of elements without the need
-     * to dynamically resize.
-     *
-     * @param initialCapacity The implementation performs internal
-     * sizing to accommodate this many elements.
-     * @throws IllegalArgumentException if the initial capacity of
-     * elements is negative
-     */
-    public ConcurrentHashMap(int initialCapacity) {
-        if (initialCapacity < 0)
-            throw new IllegalArgumentException();
-        int cap = ((initialCapacity >= (MAXIMUM_CAPACITY >>> 1)) ?
-                   MAXIMUM_CAPACITY :
-                   tableSizeFor(initialCapacity + (initialCapacity >>> 1) + 1));
-        this.sizeCtl = cap;
-    }
+
 
     /**
      * Creates a new map with the same mappings as the given map.
@@ -848,6 +850,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * @param m the map
      */
     public ConcurrentHashMap(Map<? extends K, ? extends V> m) {
+        //此时sizeCtl为16
         this.sizeCtl = DEFAULT_CAPACITY;
         putAll(m);
     }
@@ -868,7 +871,28 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * @since 1.6
      */
     public ConcurrentHashMap(int initialCapacity, float loadFactor) {
+        //此时sizeCtl为cap,cap为用户传进来的数组容量（这个容量是进过程序处理的）
         this(initialCapacity, loadFactor, 1);
+    }
+
+    /**
+     * Creates a new, empty map with an initial table size
+     * accommodating the specified number of elements without the need
+     * to dynamically resize.
+     *
+     * @param initialCapacity The implementation performs internal
+     * sizing to accommodate this many elements.
+     * @throws IllegalArgumentException if the initial capacity of
+     * elements is negative
+     */
+    public ConcurrentHashMap(int initialCapacity) {
+        if (initialCapacity < 0)
+            throw new IllegalArgumentException();
+        int cap = ((initialCapacity >= (MAXIMUM_CAPACITY >>> 1)) ?
+                MAXIMUM_CAPACITY :
+                tableSizeFor(initialCapacity + (initialCapacity >>> 1) + 1));
+        //此时sizeCtl为cap,cap为用户传进来的数组容量（这个容量是进过程序处理的）
+        this.sizeCtl = cap;
     }
 
     /**
@@ -898,6 +922,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
         long size = (long)(1.0 + (long)initialCapacity / loadFactor);
         int cap = (size >= (long)MAXIMUM_CAPACITY) ?
             MAXIMUM_CAPACITY : tableSizeFor((int)size);
+        //此时sizeCtl为cap,cap为用户传进来的数组容量（这个容量是进过程序处理的）
         this.sizeCtl = cap;
     }
 
@@ -917,7 +942,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      * {@inheritDoc}
      */
     public boolean isEmpty() {
-        return sumCount() <= 0L; // ignore transient negative values
+        return sumCount() <= 0L;  // ignore transient negative values
     }
 
     /**
@@ -940,8 +965,17 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 if ((ek = e.key) == key || (ek != null && key.equals(ek)))
                     return e.val;
             }
+            /*
+              eh < 0说明eh是一个特殊节点：正在迁移中的节点或树节点，又或者是RESERVED节点，
+              此时会走find方法进行查找。而不同的节点会重写find方法。也就是说，每种特殊节点
+              都有自己的寻找方式
+               */
             else if (eh < 0)
                 return (p = e.find(h, key)) != null ? p.val : null;
+            /*
+              走到这里说明eh >= 0，即当前桶是一个正常的Node链表，那么遍历链表上的每一个节点进行查找
+            （第一个节点不需要判断了，因为在第17和18行代码处已经判断过了）
+             */
             while ((e = e.next) != null) {
                 if (e.hash == h &&
                     ((ek = e.key) == key || (ek != null && key.equals(ek))))
@@ -1008,26 +1042,36 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
 
     /** Implementation for put and putIfAbsent */
     final V putVal(K key, V value, boolean onlyIfAbsent) {
+        //K,V都不能为空，否则的话跑出异常
         if (key == null || value == null) throw new NullPointerException();
+        //key的hash值
         int hash = spread(key.hashCode());
+        //用来计算在这个节点总共有多少个元素，用来控制扩容或者转移为树
         int binCount = 0;
         for (Node<K,V>[] tab = table;;) {
             Node<K,V> f; int n, i, fh;
             if (tab == null || (n = tab.length) == 0)
                 tab = initTable();
             else if ((f = tabAt(tab, i = (n - 1) & hash)) == null) {
-                if (casTabAt(tab, i, null,
-                             new Node<K,V>(hash, key, value, null)))
+                if (casTabAt(tab, i, null, new Node<K,V>(hash, key, value, null)))
                     break;                   // no lock when adding to empty bin
             }
+            //如果当前正在扩容，则帮助扩容并返回最新table[]
             else if ((fh = f.hash) == MOVED)
+                //扩容完毕再在新table中放入键值对
                 tab = helpTransfer(tab, f);
             else {
                 V oldVal = null;
                 synchronized (f) {
+
                     if (tabAt(tab, i) == f) {
+                        //头结点的 hash>=0，说明是链表//表明是链表结点类型，hash值是大于0的，即spread()方法计算而来
                         if (fh >= 0) {
                             binCount = 1;
+                            /*
+                            其实从下面的循环可以看出，ConcurrentHashMap中去掉了HashMap中的快速判断模式
+                            注意，在链表上每循环一个节点，binCount就+1（for循环运行机制：第一个节点不加）
+                            */
                             for (Node<K,V> e = f;; ++binCount) {
                                 K ek;
                                 if (e.hash == hash &&
@@ -1038,6 +1082,11 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                                         e.val = value;
                                     break;
                                 }
+                                /*
+                                e指向下一个节点，如果下一个节点为null，意味着已经循环到最后一个节点
+                                还没有找到一样的，此时将要插入的新节点插到最后（pred指针指向当前节点的
+                                上一个节点，因为e此时已经变成当前节点的下一个节点了）
+                               */
                                 Node<K,V> pred = e;
                                 if ((e = e.next) == null) {
                                     pred.next = new Node<K,V>(hash, key,
@@ -1060,6 +1109,7 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                 }
                 if (binCount != 0) {
                     if (binCount >= TREEIFY_THRESHOLD)
+                        //i是node数组下标，下面代码的意思是数组下标为i的链表需要扩容
                         treeifyBin(tab, i);
                     if (oldVal != null)
                         return oldVal;
@@ -2223,9 +2273,16 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
     private final Node<K,V>[] initTable() {
         Node<K,V>[] tab; int sc;
         while ((tab = table) == null || tab.length == 0) {
+            // 发现正在初始化或者在扩容，则什么也不做，进入自旋状态等待表被初始化（或扩容）完成
             if ((sc = sizeCtl) < 0)
+                //从执行状态变成就绪状态，然后处理器再从就绪队列中挑选线程进行执行（优先级大的，被挑选的概率较大），这种转换也不确定，让或者不让都是取决与处理器，线程可能继续占有处理器。
                 Thread.yield(); // lost initialization race; just spin
-            else if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {
+            /*
+            sizeCtl 第一个使用场景：数组初始化前。sizeCtl=0(也就是无参构造器) 表示使用默认的初始化大小，否则使用自定义的初始化容量。
+            sizeCtl 第二个使用场景：数组初始化中。sizeCtl=-1 表示正在初始化数组 table。
+            sizeCtl 第三个使用场景：数组初始化后。sizeCtl>0 表示 table 扩容的阈值。
+            */
+            else if (U.compareAndSwapInt(this, SIZECTL, sc, -1)) {//SIZECTL：表示当前对象的内存偏移量，sc表示期望值，-1表示要替换的值，设定为-1表示要初始化表了
                 try {
                     if ((tab = table) == null || tab.length == 0) {
                         int n = (sc > 0) ? sc : DEFAULT_CAPACITY;
@@ -2235,6 +2292,12 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
                         sc = n - (n >>> 2);
                     }
                 } finally {
+                    /*
+51                 之所以要把下面这行代码放在finally子句中，是因为在上面代码中使用了@SuppressWarnings注解来
+52                 抑制异常，也就是说，这里可能会抛出异常（又或者是可能发生OOM）。如果抛出异常的话，sizeCtl就一直是-1了，
+53                 这样别的线程也不能完成初始化工作，就成为死循环了。所以sizeCtl赋值这行代码放在finally子句的意义就是：
+54                 确保即使发生异常的话，也要将sizeCtl赋成初始值sc，然后再让其他的线程完成初始化工作
+55                  */
                     sizeCtl = sc;
                 }
                 break;
@@ -2505,7 +2568,9 @@ public class ConcurrentHashMap<K,V> extends AbstractMap<K,V>
      */
     @sun.misc.Contended static final class CounterCell {
         volatile long value;
-        CounterCell(long x) { value = x; }
+        CounterCell(long x) {
+            value = x;
+        }
     }
 
     final long sumCount() {

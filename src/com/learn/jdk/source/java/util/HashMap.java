@@ -255,6 +255,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * tree removal about conversion back to plain bins upon
      * shrinkage.
      */
+    //TreeNodes占用空间是普通Nodes的两倍，所以只有当bin包含足够多的节点时才会转成TreeNodes，而是否足够多就是由TREEIFY_THRESHOLD的值决定的。
+    //当hashCode离散性很好的时候，树型bin用到的概率非常小，因为数据均匀分布在每个bin中，几乎不会有bin中链表长度会达到阈值。但是在随机hashCode下，离散性可能会变差，然而JDK又不能阻止用户实现这种不好的hash算法，因此就可能导致不均匀的数据分布。不过理想情况下随机hashCode算法下所有bin中节点的分布频率会遵循泊松分布，我们可以看到，一个bin中链表长度达到8个元素的概率为0.00000006，几乎是不可能事件。
     static final int TREEIFY_THRESHOLD = 8;
 
     /**
@@ -262,6 +264,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * resize operation. Should be less than TREEIFY_THRESHOLD, and at
      * most 6 to mesh with shrinkage detection under removal.
      */
+    //在进行扩容操作时，桶中的元素可能会减少
     static final int UNTREEIFY_THRESHOLD = 6;
 
     /**
@@ -336,6 +339,8 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      */
     static final int hash(Object key) {
         int h;
+        //如果key=null，那么hash值为0，然后存放到了table[0]位置
+        //hash方法解读https://www.zhihu.com/question/20733617
         return (key == null) ? 0 : (h = key.hashCode()) ^ (h >>> 16);
     }
 
@@ -627,6 +632,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                    boolean evict) {
         Node<K,V>[] tab; Node<K,V> p; int n, i;
         if ((tab = table) == null || (n = tab.length) == 0)
+            //初次添加元素的时候会进行扩容，也就是说刚开始new hashMap()的时候只是创建了一个指引，没有分配任何内存空间，有点像懒加载机制。
             n = (tab = resize()).length;
         if ((p = tab[i = (n - 1) & hash]) == null)
             tab[i] = newNode(hash, key, value, null);
@@ -641,6 +647,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
                 for (int binCount = 0; ; ++binCount) {
                     if ((e = p.next) == null) {
                         p.next = newNode(hash, key, value, null);
+                        //当binCount是7的时候，p.next已经赋值了，也就是说当前链表的长度是8，根据下面的条件要进行扩容了。
                         if (binCount >= TREEIFY_THRESHOLD - 1) // -1 for 1st
                             treeifyBin(tab, hash);
                         break;
@@ -653,15 +660,21 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             }
             if (e != null) { // existing mapping for key
                 V oldValue = e.value;
+                //若onlyIfAbsent==true，则已存在节点的value不能被覆盖，除非其value为null
+                //否则的话，用输入的value覆盖e.value
                 if (!onlyIfAbsent || oldValue == null)
                     e.value = value;
+                //钩子方法，这在HashMap中是个空方法，但是在其子类LinkedHashMap中会被Override
+                //通知子类：节点e被访问过了
                 afterNodeAccess(e);
+                //返回已被覆盖的节点e的oldValue
                 return oldValue;
             }
         }
         ++modCount;
         if (++size > threshold)
             resize();
+        //同样的钩子方法，通知子类有新节点插入
         afterNodeInsertion(evict);
         return null;
     }
@@ -675,49 +688,113 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      *
      * @return the table
      */
+    //该函数两种使用情况，1.一种是初始化哈希表，2.一种是当前数组容量过小，需要扩容。
     final Node<K,V>[] resize() {
+        //旧数组的引用
         Node<K,V>[] oldTab = table;
+        //旧数组的长度
         int oldCap = (oldTab == null) ? 0 : oldTab.length;
+        //旧数组阈值
         int oldThr = threshold;
+        //新数组长度，阈值
         int newCap, newThr = 0;
+        // 针对情况2：若扩容前的数组容量超过最大值，则不再扩充
         if (oldCap > 0) {
+            //极端情况，旧数组到达最大值
             if (oldCap >= MAXIMUM_CAPACITY) {
+                //阈值改成最大，返回旧数组
                 threshold = Integer.MAX_VALUE;
                 return oldTab;
             }
+            // 针对情况2：若无超过最大值，就扩充为原来的2倍
+            //这里扩容，新数组长度是旧数组长度的两倍，同样新阈值是旧阈值的两倍。
             else if ((newCap = oldCap << 1) < MAXIMUM_CAPACITY &&
                      oldCap >= DEFAULT_INITIAL_CAPACITY)
                 newThr = oldThr << 1; // double threshold
         }
+        // 针对情况1：初始化哈希表（采用指定 or 默认值）
+       /* public HashMap(int initialCapacity, float loadFactor) {
+            if (initialCapacity < 0)
+                throw new IllegalArgumentException("Illegal initial capacity: " +
+                        initialCapacity);
+            if (initialCapacity > MAXIMUM_CAPACITY)
+                initialCapacity = MAXIMUM_CAPACITY;
+            if (loadFactor <= 0 || Float.isNaN(loadFactor))
+                throw new IllegalArgumentException("Illegal load factor: " +
+                        loadFactor);
+            this.loadFactor = loadFactor;
+            this.threshold = tableSizeFor(initialCapacity);
+        }*/
+
+       /*public HashMap(int initialCapacity) {
+            this(initialCapacity, DEFAULT_LOAD_FACTOR);
+        }*/
+       //使用上面两种构造器创建的哈希表，threshold值是大于0的，又因为方法中将threshold赋值给了oldThr。
         else if (oldThr > 0) // initial capacity was placed in threshold
+            //方法中将threshold赋值给了oldThr，又因为构造器中threshold = tableSizeFor(initialCapacity)，即创建哈希表时用户手动传进来的初始值
             newCap = oldThr;
         else {               // zero initial threshold signifies using defaults
+            //这里其实才是数组初始化
+            /*public HashMap() {
+                this.loadFactor = DEFAULT_LOAD_FACTOR; // all other fields defaulted
+            }*/
+            //使用该构造器创建的哈希表，threshold值是默认值0，又因为方法中将threshold赋值给了oldThr。
             newCap = DEFAULT_INITIAL_CAPACITY;
             newThr = (int)(DEFAULT_LOAD_FACTOR * DEFAULT_INITIAL_CAPACITY);
         }
+
+        /* public HashMap(int initialCapacity, float loadFactor) {
+            if (initialCapacity < 0)
+                throw new IllegalArgumentException("Illegal initial capacity: " +
+                        initialCapacity);
+            if (initialCapacity > MAXIMUM_CAPACITY)
+                initialCapacity = MAXIMUM_CAPACITY;
+            if (loadFactor <= 0 || Float.isNaN(loadFactor))
+                throw new IllegalArgumentException("Illegal load factor: " +
+                        loadFactor);
+            this.loadFactor = loadFactor;
+            this.threshold = tableSizeFor(initialCapacity);
+        }*/
+
+       /*public HashMap(int initialCapacity) {
+            this(initialCapacity, DEFAULT_LOAD_FACTOR);
+        }*/
+        //因为用户创建哈希表的时候用的是上面的两种构造器，所以在执行完else if (oldThr > 0) newCap = oldThr之后，新阈值newThr为0，所以要初始化一下新阈值的值。
         if (newThr == 0) {
             float ft = (float)newCap * loadFactor;
             newThr = (newCap < MAXIMUM_CAPACITY && ft < (float)MAXIMUM_CAPACITY ?
                       (int)ft : Integer.MAX_VALUE);
         }
+        //更新阈值
         threshold = newThr;
         @SuppressWarnings({"rawtypes","unchecked"})
+        //创建新数组
         Node<K,V>[] newTab = (Node<K,V>[])new Node[newCap];
         table = newTab;
         if (oldTab != null) {
             for (int j = 0; j < oldCap; ++j) {
                 Node<K,V> e;
                 if ((e = oldTab[j]) != null) {
+                    //遍历旧数组，把原来的引用取消，方便垃圾回收
                     oldTab[j] = null;
+                    //这个链只有一个节点，即这个位置只有一个元素既不是链表也不是红黑树，根据新数组长度计算在新表中的位置
                     if (e.next == null)
                         newTab[e.hash & (newCap - 1)] = e;
                     else if (e instanceof TreeNode)
+                        //oldCap旧数组长度
+                        //谁调动了resize方法，谁就是this
                         ((TreeNode<K,V>)e).split(this, newTab, j, oldCap);
                     else { // preserve order
-                        Node<K,V> loHead = null, loTail = null;
-                        Node<K,V> hiHead = null, hiTail = null;
+                        Node<K,V> loHead = null, loTail = null; //lo-->low指低位
+                        Node<K,V> hiHead = null, hiTail = null; //hi-->high指高位
                         Node<K,V> next;
                         do {
+//扩容前（16）：数组长度-1（n-1）0000 0000... 0000 1111,key对应的hash值0000 0000... 0000 0101，key对应的数组下标（hash&(n-1)）0000 0000... 0000 0101
+//扩容后（32）：数组长度-1（n-1）0000 0000... 0001 1111,key对应的hash值0000 0000... 0000 0101，key对应的数组下标（hash&(n-1)）0000 0000... 0000 0101
+//扩容后数组最高位多了一位1，即由0000 0000... 0000 1111-->0000 0000... 0001 1111，hash值在扩容数组之后的这一位上是0，所以最后的结果显示位置不变
+//扩容前（16）：数组长度-1（n-1）0000 0000... 0000 1111,key对应的hash值0000 0000... 0001 0101，key对应的数组下标（hash&(n-1)）0000 0000... 0000 0101
+//扩容后（32）：数组长度-1（n-1）0000 0000... 0001 1111,key对应的hash值0000 0000... 0001 0101，key对应的数组下标（hash&(n-1)）0000 0000... 0001 0101
+//扩容后数组最高位多了一位1，即由0000 0000... 0000 1111-->0000 0000... 0001 1111，hash值在扩容数组之后的这一位上是1，所以最后的结果显示原来的位置+16是新位置
                             next = e.next;
                             if ((e.hash & oldCap) == 0) {
                                 if (loTail == null)
@@ -753,24 +830,33 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * Replaces all linked nodes in bin at index for given hash unless
      * table is too small, in which case resizes instead.
      */
+    //红黑树既有双向链表又有左右孩子以及父结点。上面的红黑树的图只表明了左右孩子以及parent结点，其实还应该画出每个结点的前驱(prev)以及后继(next)结点
+    //添加元素发生冲突时，并且冲突地址的元素个数大于8个：首先会把单链表变成双向链表，为什么变成双向链表而不是直接把单链表传过去构造红黑树呢？
+    //是因为在后面删除某个树结点的时候，如果是单链表构造的红黑树的话，删除了比如5这个节点，那么需要把4与5,5与6的关系断掉，再把4的next指向6。问题是通过单链表如何知道5的prev结点是4呢?答案是需要再次遍历整个红黑树。但是如果使用的是双向链表转的红黑树的话，由于双向链表有指向前驱和后继的指针，因此可以不用遍历红黑树即可直接指导5的前驱是4。
     final void treeifyBin(Node<K,V>[] tab, int hash) {
         int n, index; Node<K,V> e;
+        //树形化还有一个要求就是数组长度必须大于等于64，否则继续采用扩容策略
         if (tab == null || (n = tab.length) < MIN_TREEIFY_CAPACITY)
             resize();
         else if ((e = tab[index = (n - 1) & hash]) != null) {
+            //hd指向首节点，tl指向尾节点
             TreeNode<K,V> hd = null, tl = null;
             do {
+                //将链表节点转化为红黑树节点
                 TreeNode<K,V> p = replacementTreeNode(e, null);
+                // 如果尾节点为空，说明还没有首节点
                 if (tl == null)
+                    // 当前节点作为首节点
                     hd = p;
-                else {
-                    p.prev = tl;
-                    tl.next = p;
+                else {// 尾节点不为空，构造一个双向链表结构，将当前节点追加到双向链表的末尾
+                    p.prev = tl;// 当前树节点的前一个节点指向尾节点
+                    tl.next = p;// 尾节点的后一个节点指向当前节点
                 }
-                tl = p;
-            } while ((e = e.next) != null);
-            if ((tab[index] = hd) != null)
-                hd.treeify(tab);
+                tl = p;// 把当前节点设为尾节点
+            } while ((e = e.next) != null);// 继续遍历单链表
+            //将原本的单链表转化为一个节点类型为TreeNode的双向链表
+            if ((tab[index] = hd) != null)// 把转换后的双向链表，替换数组原来位置上的单向链表
+                hd.treeify(tab);// 将当前双向链表树形化
         }
     }
 
@@ -878,6 +964,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         Node<K,V>[] tab; V v;
         if ((tab = table) != null && size > 0) {
             for (int i = 0; i < tab.length; ++i) {
+                //这里没有进行判断是否是红黑树的原因是，因为红黑树还保留了双向链表的结构。
                 for (Node<K,V> e = tab[i]; e != null; e = e.next) {
                     if ((v = e.value) == value ||
                         (value != null && value.equals(v)))
@@ -1805,6 +1892,30 @@ public class HashMap<K,V> extends AbstractMap<K,V>
      * extends Node) so can be used as extension of either regular or
      * linked node.
      */
+   /* 可以看到就是个红黑树节点，有父亲、左右孩子、前一个元素的节点，还有个颜色值。
+    另外由于它继承自LinkedHashMap.Entry，而LinkedHashMap.Entry继承自 HashMap.Node，因此还有额外的6个属性：
+    // 继承 LinkedHashMap.Entry 的
+    Entry<K,V> before, after;
+
+    // 继承 HashMap.Node 的
+    final int hash;
+    final K key;
+    V value;
+    Node<K,V> next;*/
+
+    /*
+    1.每个节点非红即黑.
+    2.根节点为黑色.
+    3.每个叶子节点为黑色。叶子节点为NIL节点，即空节点.
+    4.如果一个节点为红色，那么它的子节点一定是黑色.(没有两个相邻的红色节点（红色节点不能有红色父节点或红色子节点，并没有说不能出现连续的黑色节点）)
+    5.从一个节点到该节点的子孙节点的所有路径包含相同个数的黑色节点.
+    */
+
+    /*为什么要进行旋转？
+    由于P和X节点都为红色节点这破环了红节点下面的节点必须为黑色节点的规则。
+    新加入的节点总是红色的，这是为什么呢？
+    因为被插入前的树结构是构建好的，一但我们进行添加黑色的节点，无论添加在哪里都会破坏原有路径上的黑色节点的数量平等关系，所以插入红色节点是正确的选择。
+    */
     static final class TreeNode<K,V> extends LinkedHashMap.Entry<K,V> {
         TreeNode<K,V> parent;  // red-black tree links
         TreeNode<K,V> left;
@@ -1958,7 +2069,10 @@ public class HashMap<K,V> extends AbstractMap<K,V>
          */
         final Node<K,V> untreeify(HashMap<K,V> map) {
             Node<K,V> hd = null, tl = null;
+            //遍历红黑树，无论使用遍历树的形式，还是使用遍历双链表的形式，时间复杂度都是O(n)，但是使用遍历双链表的形式更简便
+            //谁调用了untreeify，this就是谁。所以这里的this指的是是调用untreeify的loHead，loHead是一个链表
             for (Node<K,V> q = this; q != null; q = q.next) {
+                //replacementNode将树节点变成链表节点
                 Node<K,V> p = map.replacementNode(q, null);
                 if (tl == null)
                     hd = p;
@@ -2139,12 +2253,17 @@ public class HashMap<K,V> extends AbstractMap<K,V>
         final void split(HashMap<K,V> map, Node<K,V>[] tab, int index, int bit) {
             TreeNode<K,V> b = this;
             // Relink into lo and hi lists, preserving order
+            //保存在原索引的红黑树
             TreeNode<K,V> loHead = null, loTail = null;
+            //保存在新索引的红黑树
             TreeNode<K,V> hiHead = null, hiTail = null;
             int lc = 0, hc = 0;
+            //遍历红黑树，无论使用遍历树的形式，还是使用遍历双链表的形式，时间复杂度都是O(n)，但是使用遍历双链表的形式更简便
             for (TreeNode<K,V> e = b, next; e != null; e = next) {
                 next = (TreeNode<K,V>)e.next;
                 e.next = null;
+                //哈希值和原数组长度进行&操作，为0则在原数组的索引位置，非0则在原数组索引位置+原数组长度的新位置
+                //bit旧数组长度
                 if ((e.hash & bit) == 0) {
                     if ((e.prev = loTail) == null)
                         loHead = e;
@@ -2164,18 +2283,28 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             }
 
             if (loHead != null) {
+                //当红黑树的节点不大于去树化阈值，则将原索引处的红黑树进行去树化操作
                 if (lc <= UNTREEIFY_THRESHOLD)
+                    //红黑树根节点作为原索引处的元素
                     tab[index] = loHead.untreeify(map);
                 else {
+                    //当红黑树的节点大于去树化阈值，则将原索引处的红黑树进行树化操作
                     tab[index] = loHead;
+                    /**
+                     * hiHead == null 时，表明扩容后，
+                     * 所有节点仍在原位置，树结构不变，无需重新树化
+                     */
                     if (hiHead != null) // (else is already treeified)
                         loHead.treeify(tab);
                 }
             }
             if (hiHead != null) {
+                //当红黑树的节点不大于去树化阈值，则将新索引处的红黑树进行去树化操作
                 if (hc <= UNTREEIFY_THRESHOLD)
+                    //红黑树根节点作为新索引处的元素
                     tab[index + bit] = hiHead.untreeify(map);
                 else {
+                    //当红黑树的节点大于去树化阈值，则将新索引处的红黑树进行树化操作
                     tab[index + bit] = hiHead;
                     if (loHead != null)
                         hiHead.treeify(tab);
@@ -2384,6 +2513,7 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             if (tl != null && (tl.parent != t || tl.hash > t.hash))
                 return false;
             if (tr != null && (tr.parent != t || tr.hash < t.hash))
+
                 return false;
             if (t.red && tl != null && tl.red && tr != null && tr.red)
                 return false;
@@ -2394,5 +2524,52 @@ public class HashMap<K,V> extends AbstractMap<K,V>
             return true;
         }
     }
+
+    /*
+    HashMap 在 jdk1.7 中 使用 数组加链表的方式，并且在进行链表插入时候使用的是头结点插入的方法。
+    注 ：这里为什么使用 头插法的原因是我们若是在散列以后，判断得到值是一样的，使用头插法，不用每次进行遍历链表的长度。但是这样会有一个缺点，在进行扩容时候，会导致进入新数组时候出现倒序的情况，也会在多线程时候出现线程的不安全性。
+    但是对与 jdk1.8 而言，还是要进行阙值的判断，判断在什么时候进行红黑树和链表的转换。所以无论什么时候都要进行遍历，于是插入到尾部，防止出现扩容时候还会出现倒序情况。
+    */
+
+    /*key 可以是 null 吗，value 可以是 null 吗
+    当然都是可以的，但是对于 key 来说只能运行出现一个 key 值为 null，但是可以出现多个 value 值为 null
+    */
+
+    /*一般用什么作为 key 值
+    一般Integer、String 这种不可变类当 HashMap 当 key， String 最为常用。
+            (1) 因为字符串是不可变的，所以在它创建的时候 hashcode 就被缓存了，不需要重新计算。 这就使得字符串很适合作为 Map 中的键，字符串的处理速度要快过其它的键对象。 这就是 HashMap 中的键往往都使用字符串。
+            (2) 因为获取对象的时候要用到 equals () 和 hashCode ()方法，那么键对象正确的重写这两个方法是非常重要的，这些类已 经很规范的覆写了 hashCode () 以及 equals ()方 法。
+    */
+
+    /*用可变类当 Hashmap 的 Key 会有什么问题
+    hashcode 可能会发生变化，导致 put 进行的值，无法 get 出来，如下代码所示：
+
+    HashMap<List<String>,Object> map=new HashMap<>();
+    List<String> list=new ArrayList<>();
+        list.add("hello");
+    Object object=new Object();
+        map.put(list,object);
+        System.out.println(map.get(list));
+        list.add("hello world");
+        System.out.println(map.get(list));
+    输出值如下：
+    java.lang.Object@1b6d3586
+    null*/
+
+    //hashmap只有在第一次添加元素的时候才会初始化
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }

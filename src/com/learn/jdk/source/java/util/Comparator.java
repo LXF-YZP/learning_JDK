@@ -403,7 +403,7 @@ public interface Comparator<T> {
      * Accepts a function that extracts a sort key from a type {@code T}, and
      * returns a {@code Comparator<T>} that compares by that sort key using
      * the specified {@link Comparator}.
-      *
+     *
      * <p>The returned comparator is serializable if the specified function
      * and comparator are both serializable.
      *
@@ -433,8 +433,8 @@ public interface Comparator<T> {
         Objects.requireNonNull(keyExtractor);
         Objects.requireNonNull(keyComparator);
         return (Comparator<T> & Serializable)
-            (c1, c2) -> keyComparator.compare(keyExtractor.apply(c1),
-                                              keyExtractor.apply(c2));
+                (c1, c2) -> keyComparator.compare(keyExtractor.apply(c1),
+                        keyExtractor.apply(c2));
     }
 
     /**
@@ -466,7 +466,7 @@ public interface Comparator<T> {
     {
         Objects.requireNonNull(keyExtractor);
         return (Comparator<T> & Serializable)
-            (c1, c2) -> keyExtractor.apply(c1).compareTo(keyExtractor.apply(c2));
+                (c1, c2) -> keyExtractor.apply(c1).compareTo(keyExtractor.apply(c2));
     }
 
     /**
@@ -487,7 +487,7 @@ public interface Comparator<T> {
     public static <T> Comparator<T> comparingInt(ToIntFunction<? super T> keyExtractor) {
         Objects.requireNonNull(keyExtractor);
         return (Comparator<T> & Serializable)
-            (c1, c2) -> Integer.compare(keyExtractor.applyAsInt(c1), keyExtractor.applyAsInt(c2));
+                (c1, c2) -> Integer.compare(keyExtractor.applyAsInt(c1), keyExtractor.applyAsInt(c2));
     }
 
     /**
@@ -508,7 +508,7 @@ public interface Comparator<T> {
     public static <T> Comparator<T> comparingLong(ToLongFunction<? super T> keyExtractor) {
         Objects.requireNonNull(keyExtractor);
         return (Comparator<T> & Serializable)
-            (c1, c2) -> Long.compare(keyExtractor.applyAsLong(c1), keyExtractor.applyAsLong(c2));
+                (c1, c2) -> Long.compare(keyExtractor.applyAsLong(c1), keyExtractor.applyAsLong(c2));
     }
 
     /**
@@ -529,6 +529,6 @@ public interface Comparator<T> {
     public static<T> Comparator<T> comparingDouble(ToDoubleFunction<? super T> keyExtractor) {
         Objects.requireNonNull(keyExtractor);
         return (Comparator<T> & Serializable)
-            (c1, c2) -> Double.compare(keyExtractor.applyAsDouble(c1), keyExtractor.applyAsDouble(c2));
+                (c1, c2) -> Double.compare(keyExtractor.applyAsDouble(c1), keyExtractor.applyAsDouble(c2));
     }
 }

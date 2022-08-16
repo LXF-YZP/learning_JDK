@@ -258,6 +258,8 @@ public class ArrayList<E> extends AbstractList<E>
         int oldCapacity = elementData.length;
         int newCapacity = oldCapacity + (oldCapacity >> 1);
         if (newCapacity - minCapacity < 0)
+            //add 第 1 个元素的时候，数组还为空，所以无论是 oldCapacity 还是 newCapacity 都是 0，经过第一次判断后，newCapacity = minCapacity 执行了，此时 newCapacity 为 10，第二个判断不会进入，它不可能大于数组的最大容量。
+            //add 第 11 个元素的时候，oldCapacity 为 10，newCapacity = 10 + 10/2 = 15，大于 minCapacity = 11，第一个判断不会进入，同时它肯定也没有大于数组最大 size，不会进入 。数组容量此时就扩为 15，add 方法中会返回一个 true，size 也增加成 11。
             newCapacity = minCapacity;
         if (newCapacity - MAX_ARRAY_SIZE > 0)
             newCapacity = hugeCapacity(minCapacity);
@@ -1466,3 +1468,5 @@ public class ArrayList<E> extends AbstractList<E>
         modCount++;
     }
 }
+
+//https://segmentfault.com/a/1190000039182580
