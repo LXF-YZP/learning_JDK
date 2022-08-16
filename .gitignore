@@ -5,7 +5,7 @@
 */workspace.xml
 */misc.xml
 *.iml
-learning_JDK.iml
+git rm -r --cached .
 out
 gen
 # Compiled class file
