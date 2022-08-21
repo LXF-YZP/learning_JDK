@@ -8,9 +8,7 @@ package com.learn.jdk.algorithm;
 public class Stash {
 
     public static void main(String[] args) {
-        System.out.println("1111111");
-        System.out.println("4444444");
-        System.out.println("5555555");
+        System.out.println("分支基础");
 
     }
 }
