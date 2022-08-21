@@ -11,6 +11,7 @@ public class Stash {
         System.out.println("分支基础");
         System.out.println("master分支第一次提交");
         System.out.println("master分支第二次提交");
+        System.out.println("master分支第三次提交");
 
     }
 }
