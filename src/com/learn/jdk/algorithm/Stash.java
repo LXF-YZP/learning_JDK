@@ -11,6 +11,7 @@ public class Stash {
         System.out.println("分支基础");
         System.out.println("master 1");
         System.out.println("master 2");
+        System.out.println("master 3");
 
     }
 }
